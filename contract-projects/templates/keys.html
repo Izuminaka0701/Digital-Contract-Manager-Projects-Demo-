@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signing Keys - Digital Contract Manager</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/keys.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>🔐 Digital Contract Manager</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/contracts" class="nav-link">Contracts</a>
+                <a href="/keys" class="nav-link active">Keys</a>
+                <button onclick="handleLogout()" class="btn btn-outline btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container keys-container">
+        <div class="page-header">
+            <div>
+                <h1>Signing Keys</h1>
+                <p>Manage your cryptographic signing keys</p>
+            </div>
+            <button onclick="showGenerateModal()" class="btn btn-primary">
+                🔑 Generate New Key
+            </button>
+        </div>
+
+        <!-- Info Card -->
+        <div class="info-card">
+            <div class="info-icon">ℹ️</div>
+            <div class="info-content">
+                <h3>About Signing Keys</h3>
+                <p>Signing keys are used to digitally sign contracts. Your private key is encrypted with your password and never leaves your device unencrypted. Keep your key password safe!</p>
+            </div>
+        </div>
+
+        <!-- Keys Grid -->
+        <div class="keys-grid" id="keysGrid">
+            <div class="loading-spinner">Loading keys...</div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="empty-icon">🔑</div>
+            <h3>No Signing Keys</h3>
+            <p>Generate your first signing key to start signing contracts</p>
+            <button onclick="showGenerateModal()" class="btn btn-primary">Generate Key</button>
+        </div>
+    </div>
+
+    <!-- Generate Key Modal -->
+    <div id="generateModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('generateModal')">&times;</span>
+            <h2>Generate Signing Key</h2>
+            <form id="generateForm" onsubmit="handleGenerate(event)">
+                <div class="form-group">
+                    <label for="keyName">Key Name</label>
+                    <input type="text" id="keyName" required placeholder="e.g., Personal Key, Work Key">
+                    <small>A friendly name to identify this key</small>
+                </div>
+                <div class="form-group">
+                    <label for="keyPassword">Key Password</label>
+                    <input type="password" id="keyPassword" required minlength="8">
+                    <small>Strong password to encrypt your private key (min 8 characters)</small>
+                </div>
+                <div class="form-group">
+                    <label for="keyPasswordConfirm">Confirm Password</label>
+                    <input type="password" id="keyPasswordConfirm" required minlength="8">
+                </div>
+                <div class="warning-box">
+                    <strong>⚠️ Important:</strong> Remember this password! It cannot be recovered. You'll need it every time you sign a contract.
+                </div>
+                <div class="form-error" id="generateError"></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('generateModal')" class="btn btn-outline">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="generateBtn">Generate Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Key Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeModal('detailsModal')">&times;</span>
+            <h2>Key Details</h2>
+            <div id="keyDetails"></div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('deleteModal')">&times;</span>
+            <h2>Delete Signing Key</h2>
+            <div class="warning-box">
+                <strong>⚠️ Warning:</strong> This action cannot be undone. Any contracts signed with this key can still be verified, but you won't be able to sign new contracts with it.
+            </div>
+            <p id="deleteKeyName"></p>
+            <div class="form-error" id="deleteError"></div>
+            <div class="modal-actions">
+                <button onclick="closeModal('deleteModal')" class="btn btn-outline">Cancel</button>
+                <button onclick="confirmDelete()" class="btn btn-danger" id="deleteBtn">Delete Key</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/keys.js"></script>
+</body>
+</html>

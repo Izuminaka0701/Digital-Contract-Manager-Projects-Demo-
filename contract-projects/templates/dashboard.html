@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Digital Contract Manager</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>🔐 Digital Contract Manager</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/dashboard" class="nav-link active">Dashboard</a>
+                <a href="/contracts" class="nav-link">Contracts</a>
+                <a href="/keys" class="nav-link">Keys</a>
+                <button onclick="handleLogout()" class="btn btn-outline btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container dashboard-container">
+        <div class="dashboard-header">
+            <h1>Dashboard</h1>
+            <p id="userGreeting">Loading...</p>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-icon">📄</div>
+                <div class="stat-content">
+                    <h3 id="totalContracts">-</h3>
+                    <p>Total Contracts</p>
+                </div>
+            </div>
+            <div class="stat-card stat-success">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <h3 id="signedContracts">-</h3>
+                    <p>Signed Contracts</p>
+                </div>
+            </div>
+            <div class="stat-card stat-warning">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-content">
+                    <h3 id="pendingContracts">-</h3>
+                    <p>Pending Contracts</p>
+                </div>
+            </div>
+            <div class="stat-card stat-info">
+                <div class="stat-icon">🔑</div>
+                <div class="stat-content">
+                    <h3 id="totalKeys">-</h3>
+                    <p>Signing Keys</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h2>Quick Actions</h2>
+                </div>
+                <div class="quick-actions">
+                    <button onclick="window.location.href='/contracts'" class="action-button">
+                        <span class="action-icon">📤</span>
+                        <div>
+                            <strong>Upload Contract</strong>
+                            <p>Upload a new PDF contract</p>
+                        </div>
+                    </button>
+                    <button onclick="window.location.href='/keys'" class="action-button">
+                        <span class="action-icon">🔑</span>
+                        <div>
+                            <strong>Generate Key</strong>
+                            <p>Create a new signing key</p>
+                        </div>
+                    </button>
+                    <button onclick="window.location.href='/contracts'" class="action-button">
+                        <span class="action-icon">🔍</span>
+                        <div>
+                            <strong>Verify Contract</strong>
+                            <p>Check signature validity</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h2>Recent Activity</h2>
+                </div>
+                <div class="activity-list" id="activityList">
+                    <div class="loading-spinner">Loading activity...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-card chart-card">
+            <div class="card-header">
+                <h2>Contract Status Distribution</h2>
+            </div>
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

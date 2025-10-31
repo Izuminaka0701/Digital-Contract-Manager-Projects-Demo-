@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contracts - Digital Contract Manager</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/contracts.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>🔐 Digital Contract Manager</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/contracts" class="nav-link active">Contracts</a>
+                <a href="/keys" class="nav-link">Keys</a>
+                <button onclick="handleLogout()" class="btn btn-outline btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container contracts-container">
+        <div class="page-header">
+            <div>
+                <h1>My Contracts</h1>
+                <p>Upload, sign, and manage your digital contracts</p>
+            </div>
+            <button onclick="showUploadModal()" class="btn btn-primary">
+                📤 Upload Contract
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+            <div class="filter-group">
+                <label>Status:</label>
+                <select id="statusFilter" onchange="filterContracts()">
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="signed">Signed</option>
+                    <option value="verified">Verified</option>
+                </select>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search contracts..." onkeyup="filterContracts()">
+            </div>
+        </div>
+
+        <!-- Contracts Grid -->
+        <div class="contracts-grid" id="contractsGrid">
+            <div class="loading-spinner">Loading contracts...</div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="empty-icon">📄</div>
+            <h3>No Contracts Yet</h3>
+            <p>Upload your first contract to get started</p>
+            <button onclick="showUploadModal()" class="btn btn-primary">Upload Contract</button>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('uploadModal')">&times;</span>
+            <h2>Upload Contract</h2>
+            <form id="uploadForm" onsubmit="handleUpload(event)">
+                <div class="form-group">
+                    <label for="contractFile">PDF File</label>
+                    <input type="file" id="contractFile" accept=".pdf" required>
+                    <small>Maximum file size: 10MB</small>
+                </div>
+                <div class="form-group">
+                    <label for="contractTitle">Title</label>
+                    <input type="text" id="contractTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="contractDescription">Description (Optional)</label>
+                    <textarea id="contractDescription" rows="3"></textarea>
+                </div>
+                <div class="form-error" id="uploadError"></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('uploadModal')" class="btn btn-outline">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sign Modal -->
+    <div id="signModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('signModal')">&times;</span>
+            <h2>Sign Contract</h2>
+            <p id="signContractName"></p>
+            <form id="signForm" onsubmit="handleSign(event)">
+                <div class="form-group">
+                    <label for="signingKey">Select Signing Key</label>
+                    <select id="signingKey" required>
+                        <option value="">-- Select a key --</option>
+                    </select>
+                    <small>Don't have a key? <a href="/keys">Generate one</a></small>
+                </div>
+                <div class="form-group">
+                    <label for="keyPassword">Key Password</label>
+                    <input type="password" id="keyPassword" required>
+                    <small>Enter the password you used when generating this key</small>
+                </div>
+                <div class="form-error" id="signError"></div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal('signModal')" class="btn btn-outline">Cancel</button>
+                    <button type="submit" class="btn btn-success">Sign Contract</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Verify Modal -->
+    <div id="verifyModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('verifyModal')">&times;</span>
+            <h2>Verification Result</h2>
+            <div id="verifyResult" class="verify-result"></div>
+            <button onclick="closeModal('verifyModal')" class="btn btn-primary btn-block">Close</button>
+        </div>
+    </div>
+
+    <!-- Contract Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeModal('detailsModal')">&times;</span>
+            <div id="contractDetails"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/contracts.js"></script>
+</body>
+</html>
