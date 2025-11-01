@@ -1,5 +1,6 @@
 """
 Enhanced cryptography module with RSA-PSS signing and AES-GCM encryption
+(ĐÃ NÂNG CẤP: Thêm logic tạo Self-Signed Certificate X.509)
 """
 import hashlib
 import base64
@@ -9,36 +10,92 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 import os
 from typing import Tuple, Optional
+from datetime import datetime, timedelta
+
+# Import X.509 cho certificate
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 
 
 class CryptoManager:
     """Manages cryptographic operations for contract signing"""
     
-    # RSA key size (2048 or 4096 for production)
     KEY_SIZE = 2048
-    
-    # AES-GCM key size
     AES_KEY_SIZE = 32  # 256 bits
     
     @staticmethod
-    def generate_key_pair(password: Optional[str] = None) -> Tuple[bytes, bytes]:
+    def generate_self_signed_cert_and_key(key_name: str, password: Optional[str] = None) -> Tuple[bytes, bytes, bytes]:
         """
-        Generate RSA key pair
+        NÂNG CẤP: Tạo cặp key RSA VÀ một certificate tự ký (self-signed)
         
         Args:
-            password: Optional password to encrypt private key
+            key_name (str): Tên của key, sẽ dùng làm "Common Name" (CN) cho certificate.
+            password (Optional[str]): Mật khẩu để mã hóa private key.
             
         Returns:
-            Tuple of (private_key_pem, public_key_pem)
+            Tuple of (private_key_pem, public_key_pem, certificate_pem)
         """
-        # Generate private key
+        
+        # 1. Tạo private key
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=CryptoManager.KEY_SIZE,
             backend=default_backend()
         )
-        
-        # Serialize private key
+        public_key = private_key.public_key()
+
+        # 2. Tạo thông tin cho certificate (Subject/Issuer)
+        # Vì đây là self-signed, Subject (chủ thể) và Issuer (người phát hành) là một
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, u"VN"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Hanoi"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, u"Hanoi"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Self-Signed CA"),
+            # Dùng key_name làm Common Name (CN)
+            x509.NameAttribute(NameOID.COMMON_NAME, key_name),
+        ])
+
+        # 3. Bắt đầu xây dựng certificate
+        cert_builder = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            public_key
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.utcnow() - timedelta(days=1) # Có hiệu lực từ hôm qua
+        ).not_valid_after(
+            datetime.utcnow() + timedelta(days=5*365) # Hiệu lực 5 năm
+        ).add_extension( # Thêm các extension cơ bản
+            x509.SubjectKeyIdentifier.from_public_key(public_key),
+            critical=False,
+        ).add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(public_key),
+            critical=False,
+        ).add_extension(
+            x509.BasicConstraints(ca=False, path_length=None), # Đây là cert của người dùng (end-entity), không phải CA
+            critical=True,
+        ).add_extension(
+            x509.KeyUsage(
+                digital_signature=True, 
+                content_commitment=True, # Quan trọng cho ký PDF (non-repudiation)
+                key_encipherment=False, 
+                data_encipherment=False, 
+                key_agreement=False, 
+                key_cert_sign=False, 
+                crl_sign=False, 
+                encipher_only=False, 
+                decipher_only=False
+            ),
+            critical=True
+        )
+
+        # 4. Ký certificate (bằng chính private key của nó)
+        certificate = cert_builder.sign(private_key, hashes.SHA256(), default_backend())
+
+        # 5. Mã hóa private key nếu có password
         if password:
             encryption_algorithm = serialization.BestAvailableEncryption(password.encode())
         else:
@@ -50,92 +107,70 @@ class CryptoManager:
             encryption_algorithm=encryption_algorithm
         )
         
-        # Serialize public key
-        public_key = private_key.public_key()
+        # 6. Serialize public key
         public_pem = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
         
+        # 7. Serialize certificate
+        certificate_pem = certificate.public_bytes(serialization.Encoding.PEM)
+
+        return private_pem, public_pem, certificate_pem
+
+    # ------------------------------------------------------------------
+    # CÁC HÀM CŨ VẪN GIỮ NGUYÊN
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def generate_key_pair(password: Optional[str] = None) -> Tuple[bytes, bytes]:
+        """
+        Hàm này (cũ) giờ không dùng nữa, nhưng giữ lại phòng trường hợp khác cần.
+        Dùng generate_self_signed_cert_and_key thay thế.
+        """
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=CryptoManager.KEY_SIZE,
+            backend=default_backend()
+        )
+        if password:
+            encryption_algorithm = serialization.BestAvailableEncryption(password.encode())
+        else:
+            encryption_algorithm = serialization.NoEncryption()
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=encryption_algorithm
+        )
+        public_key = private_key.public_key()
+        public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
         return private_pem, public_pem
-    
+
     @staticmethod
     def encrypt_private_key(private_key_pem: bytes, user_password: str) -> Tuple[bytes, bytes, bytes]:
-        """
-        Encrypt private key using AES-GCM with user password
-        
-        Args:
-            private_key_pem: PEM-encoded private key
-            user_password: User's password for key derivation
-            
-        Returns:
-            Tuple of (encrypted_data, salt, nonce)
-        """
-        # Generate salt
         salt = os.urandom(16)
-        
-        # Derive key from password using PBKDF2
         key = hashlib.pbkdf2_hmac('sha256', user_password.encode(), salt, 100000, dklen=32)
-        
-        # Generate nonce
         nonce = os.urandom(12)
-        
-        # Encrypt using AES-GCM
         aesgcm = AESGCM(key)
         encrypted_data = aesgcm.encrypt(nonce, private_key_pem, None)
-        
         return encrypted_data, salt, nonce
     
     @staticmethod
     def decrypt_private_key(encrypted_data: bytes, salt: bytes, nonce: bytes, user_password: str) -> bytes:
-        """
-        Decrypt private key using AES-GCM
-        
-        Args:
-            encrypted_data: Encrypted private key
-            salt: Salt used for key derivation
-            nonce: Nonce used for encryption
-            user_password: User's password
-            
-        Returns:
-            Decrypted private key PEM
-        """
-        # Derive key from password
         key = hashlib.pbkdf2_hmac('sha256', user_password.encode(), salt, 100000, dklen=32)
-        
-        # Decrypt
         aesgcm = AESGCM(key)
         private_key_pem = aesgcm.decrypt(nonce, encrypted_data, None)
-        
         return private_key_pem
     
     @staticmethod
     def hash_document(content: bytes) -> str:
-        """
-        Calculate SHA-256 hash of document
-        
-        Args:
-            content: Document content in bytes
-            
-        Returns:
-            Hex string of hash
-        """
         return hashlib.sha256(content).hexdigest()
     
     @staticmethod
     def sign_document(content: bytes, private_key_pem: bytes, password: Optional[str] = None) -> str:
-        """
-        Sign document using RSA-PSS
-        
-        Args:
-            content: Document content
-            private_key_pem: PEM-encoded private key
-            password: Password if private key is encrypted
-            
-        Returns:
-            Base64-encoded signature
-        """
-        # Load private key
         if password:
             private_key = serialization.load_pem_private_key(
                 private_key_pem,
@@ -148,11 +183,7 @@ class CryptoManager:
                 password=None,
                 backend=default_backend()
             )
-        
-        # Calculate hash
         document_hash = hashlib.sha256(content).digest()
-        
-        # Sign using RSA-PSS
         signature = private_key.sign(
             document_hash,
             padding.PSS(
@@ -161,36 +192,17 @@ class CryptoManager:
             ),
             hashes.SHA256()
         )
-        
         return base64.b64encode(signature).decode()
     
     @staticmethod
     def verify_signature(content: bytes, signature_b64: str, public_key_pem: bytes) -> bool:
-        """
-        Verify document signature using RSA-PSS
-        
-        Args:
-            content: Document content
-            signature_b64: Base64-encoded signature
-            public_key_pem: PEM-encoded public key
-            
-        Returns:
-            True if signature is valid, False otherwise
-        """
         try:
-            # Load public key
             public_key = serialization.load_pem_public_key(
                 public_key_pem,
                 backend=default_backend()
             )
-            
-            # Decode signature
             signature = base64.b64decode(signature_b64)
-            
-            # Calculate hash
             document_hash = hashlib.sha256(content).digest()
-            
-            # Verify signature
             public_key.verify(
                 signature,
                 document_hash,
@@ -200,43 +212,13 @@ class CryptoManager:
                 ),
                 hashes.SHA256()
             )
-            
             return True
-            
         except Exception as e:
             print(f"Signature verification failed: {e}")
             return False
     
     @staticmethod
     def get_key_fingerprint(public_key_pem: bytes) -> str:
-        """
-        Generate fingerprint for public key
-        
-        Args:
-            public_key_pem: PEM-encoded public key
-            
-        Returns:
-            Hex string fingerprint
-        """
-        return hashlib.sha256(public_key_pem).hexdigest()[:16]
-
-
-# Convenience functions
-def generate_keys(password: Optional[str] = None) -> Tuple[bytes, bytes]:
-    """Generate RSA key pair"""
-    return CryptoManager.generate_key_pair(password)
-
-
-def hash_file(content: bytes) -> str:
-    """Hash file content"""
-    return CryptoManager.hash_document(content)
-
-
-def sign_file(content: bytes, private_key: bytes, password: Optional[str] = None) -> str:
-    """Sign file content"""
-    return CryptoManager.sign_document(content, private_key, password)
-
-
-def verify_file(content: bytes, signature: str, public_key: bytes) -> bool:
-    """Verify file signature"""
-    return CryptoManager.verify_signature(content, signature, public_key)
+        # Dùng SHA1 cho fingerprint ngắn gọn, dễ nhìn, theo chuẩn chung
+        # Hoặc dùng SHA256 nếu bạn muốn
+        return hashlib.sha1(public_key_pem).hexdigest()[:16].upper()

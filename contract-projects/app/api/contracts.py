@@ -2,6 +2,9 @@
 Contracts API endpoints
 (ĐÃ SỬA: Dùng SERVICE_KEY, bỏ qua RLS token)
 (ĐÃ SỬA: Điền đầy đủ các lỗi HTTPException)
+(ĐÃ SỬA: Xóa 'token' khỏi các hàm gọi storage)
+(ĐÃ SỬA: Fix async cho embed_signature)
+(ĐÃ SỬA: Fix await cho verify_embedded_signature)
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from typing import Optional, List
@@ -59,18 +62,29 @@ async def upload_contract(
 ):
     """
     Upload hợp đồng (Dùng SERVICE_KEY)
+    (ĐÃ NÂNG CẤP: Kiểm tra MIME type và Magic Bytes)
     """
     
-    if not file.filename.endswith('.pdf'):
+    # --- FIX 1: Kiểm tra MIME Type ---
+    if file.content_type != "application/pdf":
+        logger.warning(f"Upload failed: File '{file.filename}' có MIME type không hợp lệ. Mong đợi 'application/pdf' nhưng nhận được '{file.content_type}'.")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
+            detail=f"File is not a valid PDF. Expected 'application/pdf' but got '{file.content_type}'."
         )
     
     logger.info(f"User {current_user['id']} uploading contract '{file.filename}'")
     
     content = await file.read()
     content_type = file.content_type 
+    
+    # --- FIX 2: Kiểm tra Magic Bytes (Header của file) ---
+    if not content.startswith(b'%PDF-'):
+        logger.warning(f"Upload failed: File {file.filename} không phải là PDF (kiểm tra magic byte thất bại).")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is not a valid PDF. Please ensure you are uploading a real PDF file, not a renamed .txt file."
+        )
     
     if len(content) > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(
@@ -86,6 +100,7 @@ async def upload_contract(
 
     file_path = f"{current_user['id']}/{contract_id}/{safe_filename}"
     
+    # Truyền content_type, BỎ token
     uploaded_path = supabase.upload_file(
         settings.STORAGE_BUCKET, 
         file_path, 
@@ -198,12 +213,12 @@ async def sign_contract(
 ):
     """
     Ký hợp đồng (Dùng SERVICE_KEY)
+    (ĐÃ FIX: await embed_signature vì nó là async)
     """
     logger.info(f"User {current_user['id']} attempting to sign contract {contract_id} with key {sign_data.key_id}")
     
     contract = _get_and_authorize_contract(supabase, current_user["id"], contract_id)
     
-    # SỬA LỖI: Điền lại HTTPException (đây là dòng 217 của bạn)
     if contract["status"] != ContractStatus.PENDING.value:
         logger.warning(f"Sign attempt on non-pending contract {contract_id} (Status: {contract['status']})")
         raise HTTPException(
@@ -213,7 +228,6 @@ async def sign_contract(
     
     key = _get_and_authorize_key(supabase, current_user["id"], sign_data.key_id)
     
-    # SỬA LỖI: Điền lại HTTPException
     if not key.get("certificate_pem"):
         logger.error(f"Key {key['id']} 'khong co' (missing) 'certificate_pem'.")
         raise HTTPException(
@@ -226,12 +240,19 @@ async def sign_contract(
         settings.STORAGE_BUCKET, 
         contract["file_path"]
     ) 
-    # SỬA LỖI: Điền lại HTTPException
     if not pdf_bytes:
         logger.error(f"Failed to download original PDF {contract['file_path']} for signing.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Failed to retrieve contract file for signing."
+        )
+
+    # 3.5 KIỂM TRA LẠI FILE GỐC (Đề phòng file rác trong DB)
+    if not pdf_bytes.startswith(b'%PDF-'):
+        logger.error(f"Cannot sign: Original file {contract['file_path']} is not a valid PDF.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Cannot sign: The original file in storage is not a valid PDF."
         )
 
     # 4. "Giai ma" (Decrypt) "Key" (Khoa) "Bi mat" (Private)
@@ -251,8 +272,9 @@ async def sign_contract(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key password")
 
     # 5. "KY NHUNG" (EMBED SIGN) "PKCS#7"
+    # FIX CRITICAL: Thêm await vì embed_signature() giờ là async
     try:
-        signed_pdf_bytes = pdf_signer.embed_signature(
+        signed_pdf_bytes = await pdf_signer.embed_signature(
             pdf_bytes=pdf_bytes,
             signer_private_key_pem=private_key_pem_bytes,
             signer_cert_pem=key["certificate_pem"], 
@@ -275,13 +297,13 @@ async def sign_contract(
     signed_filename = f"{base_name}.signed{ext}"
     signed_file_path = f"{current_user['id']}/{contract_id}/{signed_filename}"
     
+    # SỬA LỖI: BỎ 'token', chỉ giữ content_type
     uploaded_signed_path = supabase.upload_file(
         settings.STORAGE_BUCKET, 
         signed_file_path, 
         signed_pdf_bytes,
         content_type="application/pdf"
     )
-    # SỬA LỖI: Điền lại HTTPException
     if not uploaded_signed_path:
         logger.error(f"Failed to upload SIGNED PDF {signed_file_path} to storage.")
         raise HTTPException(
@@ -302,7 +324,6 @@ async def sign_contract(
     }
     
     updated_contract = supabase.update_contract(contract_id, updates)
-    # SỬA LỖI: Điền lại HTTPException
     if not updated_contract:
         logger.error(f"Failed to update contract {contract_id} status in DB after signing.")
         raise HTTPException(
@@ -377,6 +398,7 @@ async def verify_contract(
 ):
     """
     "VERIFY" (XAC THUC) "CHU KY" (SIGNATURE) "NHUNG" (EMBEDDED) "PKCS#7"
+    (ĐÃ FIX: await verify_embedded_signature vì nó là async)
     """
     logger.info(f"User {current_user['id']} attempting to verify contract {verify_data.contract_id}")
     
@@ -400,7 +422,6 @@ async def verify_contract(
         settings.STORAGE_BUCKET, 
         contract["signed_file_path"]
     )
-    # SỬA LỖI: Điền lại HTTPException
     if not signed_pdf_bytes:
         logger.error(f"Failed to download SIGNED PDF {contract['signed_file_path']} for verification.")
         raise HTTPException(
@@ -408,8 +429,12 @@ async def verify_contract(
             detail="Failed to retrieve signed contract file."
         )
         
-    # "VERIFY" (XAC THUC)
-    verification_results = pdf_signer.verify_embedded_signature(signed_pdf_bytes)
+    # ========================================================
+    # FIX CRITICAL: Phải dùng AWAIT vì verify_embedded_signature() là async
+    # ========================================================
+    # SAI (gây lỗi): verification_results = pdf_signer.verify_embedded_signature(signed_pdf_bytes)
+    # ĐÚNG:
+    verification_results = await pdf_signer.verify_embedded_signature(signed_pdf_bytes)
 
     # "Luu" (Save) "ket qua" (result) "verify" (xac thuc) "vao" (into) "kho" (DB)
     supabase.update_contract(verify_data.contract_id, {"verification_details": verification_results})
@@ -440,7 +465,7 @@ def _get_and_authorize_key(supabase: SupabaseClient, user_id: str, key_id: str) 
     """"Lay" (Gets) "key" (khoa) "va" (and) "check" (kiem tra) "quyen" (permission) "so huu" (owner)."""
     key = supabase.get_key(key_id)
     if not key:
-        raise HTTPException(status_code=status.HTTP_440_NOT_FOUND, detail="Signing key not found") # Sửa lỗi typo 440 -> 404
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signing key not found")
     if key["user_id"] != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to use this key")
     if key["status"] != KeyStatus.ACTIVE.value:

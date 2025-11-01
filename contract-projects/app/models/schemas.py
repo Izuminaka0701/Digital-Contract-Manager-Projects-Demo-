@@ -38,7 +38,8 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8)
+    # --- SỬA DÒNG NÀY: Thêm max_length=72 ---
+    password: str = Field(..., min_length=8, max_length=72)
     
     @validator('password')
     def validate_password(cls, v):
@@ -120,12 +121,13 @@ class ContractVerifyResponse(BaseModel):
     message: str
 
 class ContractReject(BaseModel):
-    reason: Optional[str] = Field(None, max_length=500) # Thêm max_length cho an toàn DB
+    reason: Optional[str] = Field(None, max_length=500) 
 
 # Signing key schemas
 class KeyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    password: str = Field(..., min_length=8)
+    # --- SỬA DÒNG NÀY: Thêm max_length=72 ---
+    password: str = Field(..., min_length=8, max_length=72)
 
 
 class KeyResponse(BaseModel):

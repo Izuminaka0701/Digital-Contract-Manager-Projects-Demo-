@@ -1,5 +1,6 @@
 """
 Signing Keys API endpoints
+(ĐÃ NÂNG CẤP: Lưu self-signed certificate khi generate)
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 import uuid
@@ -20,21 +21,43 @@ async def generate_key(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate a new signing key pair
+    Generate a new signing key pair (VÀ certificate)
     """
     supabase = get_supabase()
     
     try:
-        # Generate RSA key pair
-        private_key_pem, public_key_pem = CryptoManager.generate_key_pair()
+        # 1. GỌI HÀM MỚI
+        # Nó trả về 3 giá trị, bao gồm cả certificate_pem
+        private_key_pem, public_key_pem, certificate_pem = CryptoManager.generate_self_signed_cert_and_key(
+            key_name=key_data.name,
+            password=key_data.password # Mã hóa private key ngay lập tức
+        )
         
-        # Encrypt private key with user password
+        # 2. Encrypt private key (bằng password khác? - Tạm thời BỎ QUA,
+        # vì hàm trên đã mã hóa rồi nếu password được cung cấp)
+        # encrypted_data, salt, nonce = CryptoManager.encrypt_private_key(
+        #     private_key_pem,
+        #     key_data.password
+        # )
+        
+        # CHỈNH SỬA LOGIC: Hàm `generate_self_signed_cert_and_key` đã trả về
+        # private_pem ĐÃ ĐƯỢC MÃ HÓA. Chúng ta không cần mã hóa 2 lần.
+        # Chúng ta cần một hàm KHÁC để mã hóa...
+        
+        # === SỬA LẠI LOGIC CHO ĐÚNG ===
+        # 1. Tạo key (private key CHƯA mã hóa)
+        private_key_pem_raw, public_key_pem, certificate_pem = CryptoManager.generate_self_signed_cert_and_key(
+            key_name=key_data.name,
+            password=None # Tạo key "trần"
+        )
+
+        # 2. Mã hóa private key "trần" đó bằng password của user
         encrypted_data, salt, nonce = CryptoManager.encrypt_private_key(
-            private_key_pem,
+            private_key_pem_raw, # Mã hóa key "trần"
             key_data.password
         )
         
-        # Calculate fingerprint
+        # 3. Calculate fingerprint
         fingerprint = CryptoManager.get_key_fingerprint(public_key_pem)
         
     except Exception as e:
@@ -50,6 +73,11 @@ async def generate_key(
         "user_id": current_user["id"],
         "name": key_data.name,
         "public_key": public_key_pem.decode(),
+        
+        # --- THÊM DÒNG NÀY ĐỂ FIX LỖI ---
+        "certificate_pem": certificate_pem.decode(),
+        # -----------------------------------
+        
         "encrypted_private_key": encrypted_data.hex(),
         "salt": salt.hex(),
         "nonce": nonce.hex(),
@@ -79,7 +107,7 @@ async def generate_key(
     }
     supabase.create_audit_log(audit_data)
     
-    # Return response without sensitive data
+    # Trả về response (không có certificate_pem, chỉ có public_key)
     return KeyResponse(
         id=created_key["id"],
         user_id=created_key["user_id"],
